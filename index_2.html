@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard de Correos — Sell-Out</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: #f9f9f7;
+    color: #0b0b0b;
+  }
+  .viz-root {
+    --surface-1:      #fcfcfb;
+    --page:           #f9f9f7;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --muted:          #898781;
+    --grid:           #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+    --series-1: #2a78d6; /* blue */
+    --series-2: #eb6834; /* orange */
+    --series-3: #1baf7a; /* aqua */
+    --series-4: #eda100; /* yellow */
+    --series-5: #e87ba4; /* magenta */
+    --good:     0ca30c;
+    --warning:  #fab219;
+    --serious:  #ec835a;
+    --critical: #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      --surface-1:      #1a1a19;
+      --page:           #0d0d0d;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --muted:          #898781;
+      --grid:           #2c2c2a;
+      --baseline:       #383835;
+      --border:         rgba(255,255,255,0.10);
+      --series-1: #3987e5;
+      --series-2: #d95926;
+      --series-3: #199e70;
+      --series-4: #c98500;
+      --series-5: #d55181;
+      --good:     #ca30c;
+      --warning:  #fab219;
+      --serious:  #ec835a;
+      --critical: #d03b3b;
+    }
+    body { background: #0d0d0d; color: #ffffff; }
+  }
+
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 28px 20px 60px; }
+  header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
+  h1 { font-size: 22px; margin: 0 0 4px; color: var(--text-primary); }
+  .sub { color: var(--text-secondary); font-size: 13.5px; margin: 0; }
+  .updated { text-align: right; font-size: 12.5px; color: var(--muted); }
+  .updated strong { color: var(--text-secondary); font-weight: 600; }
+  .refresh-btn {
+    margin-top: 8px; font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--series-1);
+    background: none; border: 1px solid var(--series-1); border-radius: 999px; padding: 5px 12px;
+    cursor: pointer; transition: background-color .12s ease, color .12s ease;
+  }
+  .refresh-btn:hover { background: var(--series-1); color: #fff; }
+
+  .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; margin-bottom: 18px; }
+  .card h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-secondary); margin: 0 0 14px; font-weight: 600; }
+  .card p.note { color: var(--muted); font-size: 12.5px; margin: 10px 0 0; line-height: 1.5; }
+
+  .kpi-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+  @media (max-width: 900px) { .kpi-row { grid-template-columns: repeat(2, 1fr); } }
+  .kpi { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; cursor: pointer; transition: border-color .12s ease; }
+  .kpi:hover { border-color: var(--muted); }
+  .kpi.active { border-color: var(--series-1); box-shadow: 0 0 0 1px var(--series-1) inset; }
+  .kpi .val { font-size: 30px; font-weight: 650; line-height: 1.1; color: var(--text-primary); font-variant-numeric: proportional-nums; }
+  .kpi .lbl { font-size: 12px; color: var(--text-secondary); margin-top: 6px; line-height: 1.35; }
+  .kpi.critical .val { color: var(--critical); }
+  .kpi.warning .val  { color: #9a6b00; }
+  .kpi.good .val     { color: var(--good); }
+
+  .bars { display: flex; flex-direction: column; gap: 9px; }
+  .bar-row { display: grid; grid-template-columns: 150px 1fr 46px; align-items: center; gap: 10px; cursor: pointer; padding: 2px 0; border-radius: 6px; }
+  .bar-row:hover .name { color: var(--text-primary); }
+  .bar-row.active .name { color: var(--text-primary); font-weight: 600; }
+  .bar-row .name { font-size: 13px; color: var(--text-secondary); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar-track { background: var(--grid); border-radius: 4px; height: 16px; position: relative; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 4px; }
+  .bar-row .count { font-size: 13px; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; font-size: 12.5px; color: var(--text-secondary); }
+  .legend .dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; margin-right: 6px; vertical-align: -1px; }
+
+  .status-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  @media (max-width: 900px) { .status-grid { grid-template-columns: repeat(2, 1fr); } }
+  .status-tile { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; cursor: pointer; transition: border-color .12s ease; }
+  .status-tile:hover { border-color: var(--muted); }
+  .status-tile.active { border-color: var(--series-1); box-shadow: 0 0 0 1px var(--series-1) inset; }
+  .status-tile .head { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; }
+  .status-tile .icon { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  .status-tile .val { font-size: 26px; font-weight: 650; color: var(--text-primary); }
+
+  .filter-bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+  .filter-bar select, .filter-bar input[type="text"] {
+    font-family: inherit; font-size: 13px; padding: 7px 10px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--surface-1); color: var(--text-primary);
+  }
+  .filter-bar select:focus, .filter-bar input:focus { outline: 2px solid var(--series-1); outline-offset: 1px; }
+  .filter-bar input[type="text"] { min-width: 200px; flex: 1; }
+  .filter-bar .clear-btn {
+    font-size: 12.5px; color: var(--series-1); background: none; border: none; cursor: pointer; padding: 6px 4px;
+    text-decoration: underline; white-space: nowrap;
+  }
+  .filter-bar .count-note { font-size: 12px; color: var(--muted); white-space: nowrap; margin-left: auto; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); font-weight: 600; padding: 6px 10px; border-bottom: 1px solid var(--grid); cursor: pointer; user-select: none; white-space: nowrap; }
+  th:hover { color: var(--text-secondary); }
+  th .arrow { display: inline-block; width: 10px; opacity: .5; }
+  th.sorted .arrow { opacity: 1; }
+  td { padding: 8px 10px; border-bottom: 1px solid var(--grid); color: var(--text-secondary); vertical-align: top; }
+  td.subj { color: var(--text-primary); }
+  td a { color: var(--series-1); text-decoration: none; }
+  td a:hover { text-decoration: underline; }
+  .pill { display: inline-block; font-size: 11px; padding: 2px 7px; border-radius: 999px; font-weight: 600; }
+  .pill.falta { background: rgba(236,131,90,.16); color: #9a4a26; }
+  .pill.pendiente { background: rgba(208,59,59,.14); color: #a02c2c; }
+  .pill.respuesta { background: rgba(250,178,25,.18); color: #7a5b00; }
+  .pill.planificacion { background: rgba(12,163,12,.14); color: #0a7a0a; }
+  @media (prefers-color-scheme: dark) {
+    .pill.falta { background: rgba(236,131,90,.22); color: #f3ac8c; }
+    .pill.pendiente { background: rgba(208,59,59,.24); color: #f19999; }
+    .pill.respuesta { background: rgba(250,178,25,.24); color: #f3d38c; }
+    .pill.planificacion { background: rgba(12,163,12,.22); color: #8de08d; }
+  }
+  .empty { color: var(--muted); font-size: 13px; padding: 6px 2px; }
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(11,11,11,.45); display: none;
+    align-items: center; justify-content: center; z-index: 100; padding: 20px;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal { background: var(--surface-1); border: 1px solid var(--border); border-radius: 14px; max-width: 480px; width: 100%; padding: 22px 24px; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+  .modal h3 { margin: 0 0 4px; font-size: 16px; color: var(--text-primary); }
+  .modal .modal-sub { font-size: 12.5px; color: var(--text-secondary); margin: 0 0 16px; }
+  .modal-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--grid); }
+  .modal-row:last-child { border-bottom: none; }
+  .modal-row .label { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--text-secondary); }
+  .modal-row .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .modal-row .n { font-size: 18px; font-weight: 650; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+  .modal-close { margin-top: 18px; width: 100%; padding: 9px; border-radius: 8px; border: 1px solid var(--border); background: none; color: var(--text-primary); font-size: 13px; font-family: inherit; cursor: pointer; }
+  .modal-close:hover { background: var(--grid); }
+  .callout { background: rgba(250,178,25,.12); border: 1px solid rgba(250,178,25,.35); border-radius: 10px; padding: 12px 16px; font-size: 13px; color: var(--text-secondary); line-height: 1.55; margin-bottom: 18px; }
+  .callout strong { color: var(--text-primary); }
+  footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 10px; }
+  .local-time { font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<div class="viz-root wrap">
+
+  <header>
+    <div>
+      <h1>Dashboard de Correos — Sell-Out</h1>
+      <p class="sub">Seguimiento de correos por marca, subcategoría de operación y estado de respuesta/planificación. Haz clic en cualquier KPI, estado o barra para filtrar la tabla de abajo.</p>
+    </div>
+    <div class="updated">
+      Última actualización<br>
+      <strong id="updated-time">—</strong><br>
+      Próxima revisión automática: cada hora, L–V 09:00–19:00 (Santiago)<br>
+      <button id="btn-refresh" class="refresh-btn" type="button">↻ Actualizar ahora</button>
+    </div>
+  </header>
+
+  <div class="card" id="notice-callout" style="display:none;">
+    <div class="callout" style="margin-bottom:0;" id="notice-text"></div>
+  </div>
+
+  <div class="card">
+    <h2 id="resumen-title" style="cursor:pointer; display:inline-flex; align-items:center; gap:6px;" title="Haz clic para ver el detalle por estado">Resumen general <span style="font-size:11px; color:var(--muted); text-transform:none; font-weight:400; letter-spacing:0;">(clic para detalle)</span></h2>
+    <div class="kpi-row">
+      <div class="kpi" data-filter-type="none"><div class="val" id="kpi-total-marca">—</div><div class="lbl">Hilos sin leer de marcas (histórico bandeja)</div></div>
+      <div class="kpi" data-filter-type="none"><div class="val" id="kpi-procesados">—</div><div class="lbl">Correos procesados por el asistente (este lote)</div></div>
+      <div class="kpi critical" data-filter-type="estado" data-filter-value="pendiente"><div class="val" id="kpi-pendiente">—</div><div class="lbl">Pendientes de triage</div></div>
+      <div class="kpi warning" data-filter-type="estado" data-filter-value="falta"><div class="val" id="kpi-falta-plan">—</div><div class="lbl">Necesitan responder y planificar</div></div>
+      <div class="kpi" data-filter-type="estado" data-filter-value="respuesta"><div class="val" id="kpi-respuesta-auto">—</div><div class="lbl">Respuestas automáticas por enviar (borradores válidos)</div></div>
+      <div class="kpi good" data-filter-type="estado" data-filter-value="planificacion"><div class="val" id="kpi-en-plan">—</div><div class="lbl">Ya en planificación</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Estado de la correspondencia (correos procesados hasta ahora)</h2>
+    <div class="status-grid" id="status-grid"></div>
+    <p class="note">El estado avanza automáticamente: Pendiente → Respuesta automática (si aplica) → Falta responder planificación. El paso a "Ya en planificación" es manual — cuando coordines la operación, mueve la etiqueta <em>Dashboard/Estado/EnPlanificacion</em> en Gmail y el próximo run del asistente lo reflejará aquí.</p>
+  </div>
+
+  <div class="card">
+    <h2>Correos sin leer por marca (histórico completo de la bandeja)</h2>
+    <div class="bars" id="brand-bars"></div>
+    <p class="note">Estos totales vienen directamente de tus etiquetas de marca en Gmail (incluye todo lo no leído, no solo lo ya clasificado por el asistente). El asistente va procesando este histórico gradualmente, unos 25–30 correos por hora en horario laboral. Haz clic en una marca para filtrar la tabla de abajo.</p>
+  </div>
+
+  <div class="card">
+    <h2>Correos clasificados por subcategoría de operación</h2>
+    <div class="legend" id="sub-legend"></div>
+    <div class="bars" id="sub-bars"></div>
+    <p class="note">Solo cuenta los correos ya revisados por el asistente, detectando la subcategoría en el <strong>cuerpo</strong> del correo. Haz clic en una subcategoría para filtrar la tabla de abajo.</p>
+  </div>
+
+  <div class="card">
+    <h2>Necesitan tu atención ahora</h2>
+    <div class="filter-bar">
+      <select id="f-marca"><option value="">Todas las marcas</option></select>
+      <select id="f-sub"><option value="">Todas las subcategorías</option></select>
+      <select id="f-estado"><option value="">Todos los estados</option></select>
+      <input type="text" id="f-search" placeholder="Buscar por asunto o remitente…">
+      <button class="clear-btn" id="f-clear">Limpiar filtros</button>
+      <span class="count-note" id="f-count"></span>
+    </div>
+    <table id="attention-table">
+      <thead>
+        <tr>
+          <th data-key="estado">Estado <span class="arrow">▾</span></th>
+          <th data-key="marca">Marca <span class="arrow">▾</span></th>
+          <th data-key="sub">Subcategoría <span class="arrow">▾</span></th>
+          <th data-key="subject">Asunto <span class="arrow">▾</span></th>
+          <th data-key="sender">De <span class="arrow">▾</span></th>
+          <th data-key="date">Fecha <span class="arrow">▾</span></th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <div class="empty" id="attention-empty" style="display:none;">No hay correos que coincidan con estos filtros.</div>
+  </div>
+
+  <div class="card">
+    <h2>Cómo se alimenta este dashboard</h2>
+    <p class="note" style="font-size:13px; color:var(--text-secondary);">
+      Una rutina automática revisa Gmail cada hora en horario laboral (L–V 09:00–19:00, hora de Santiago). En cada corrida: busca correos sin leer que aún no tengan la etiqueta <em>Dashboard/Procesado</zm>, detecta la marca (Mondelez, Kraft, Softys, Softys Professional, Unilever, Ariztía, Agrosuper, Andina, CCU, Eucerin, Sofruco, Wild Protein, Wyn, Gourmet, Evolet, Kimberly Clark) y la subcategoría de operación (Despacho, Retiro, Implementación, Degustación, Traslados) leyendo el <strong>cuerpo del correo</strong>, etiqueta el correo en Gmail y decide el estado. Solo crea un <strong>borrador</strong> de respuesta automática (nunca envía nada) cuando el remitente es externo — nunca a direcciones @sell-out.cl ni a sistemas automáticos (ej. noreply@appsheet.com). Luego regenera este dashboard con los datos actualizados.
+    </p>
+    <p class="note">Puedes corregir manualmente cualquier etiqueta directamente en Gmail (carpeta de etiquetas "Dashboard/…") y el asistente respetará tus cambios en la siguiente corrida.</p>
+  </div>
+
+  <footer>Sell-Out · Dashboard generado automáticamente a partir de Gmail · No se envía ningún correo sin tu aprobación</footer>
+
+  <div class="modal-backdrop" id="modal-backdrop">
+    <div class="modal">
+      <h3 id="modal-title">Resumen de correos por estado</h3>
+      <p class="modal-sub" id="modal-subtitle">Foto actual de todos los correos ya procesados por el asistente.</p>
+      <div id="modal-body"></div>
+      <button class="modal-close" id="modal-close">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* DATA_START */
+const DATA = {
+  "generatedAtUTC": "2026-09-04T23:14:07Z",
+  "noticeText": "Corrida horaria: 13 hilos nuevos procesados (Paso 1), seguimiento de planificación revisado en 25 hilos de marca (Paso 2) y 25 hilos recientes revisados para calendario (Paso 3) — sin fechas concretas nuevas, 0 eventos creados. Nota técnica: la plantilla más reciente en Drive estaba corrupta (guardada incompleta en una corrida anterior); este run la restauró desde la última versión completa.",
+  "brandBacklog": [
+    { "name": "Mondelez", "count": 0 },
+    { "name": "Kraft", "count": 2 },
+    { "name": "Softys", "count": 2 },
+    { "name": "Unilever", "count": 0 },
+    { "name": "Ariztía", "count": 0 },
+    { "name": "Agrosuper", "count": 3 },
+    { "name": "Andina", "count": 0 },
+    { "name": "CCU", "count": 0 },
+    { "name": "Eucerin", "count": 0 },
+    { "name": "Sofruco", "count": 0 },
+    { "name": "Wild Protein", "count": 0 },
+    { "name": "Wyn", "count": 0 },
+    { "name": "Gourmet", "count": 0 },
+    { "name": "Evolet", "count": 0 },
+    { "name": "Kimberly Clark", "count": 0 }
+  ],
+  "subcategorias": [
+    { "name": "Despacho", "count": 56 },
+    { "name": "Retiro", "count": 38 },
+    { "name": "Implementación", "count": 75 },
+    { "name": "Degustación", "count": 90 },
+    { "name": "Traslados", "count": 8 }
+  ],
+  "estados": {
+    "pendiente": 258,
+    "respuestaAutomatica": 0,
+    "faltaPlanificacion": 185,
+    "enPlanificacion": 158
+  },
+  "procesadosLote": 13,
+  "atencion": [
+    { "estado": "falta", "marca": null, "sub": "Degustación", "subject": "Reporte Semanal de Ingresos - SEMANA 36 - 2026", "sender": "fvega@sell-out.cl", "date": "2026-09-04T23:07:00Z", "threadId": "1a06ead00ee9f18d" },
+    { "estado": "falta", "marca": null, "sub": "Implementación", "subject": "Reporte Diario Implementacion - IMPLEMENTACIÓN CABECERA Y CENEFA JUMBO | 04/09/2026", "sender": "fvega@sell-out.cl", "date": "2026-09-04T21:02:28Z", "threadId": "1a06e3afed38a2a4" },
+    { "estado": "falta", "marca": null, "sub": "Implementación", "subject": "Reporte Diario Implementacion - IMPLEMENTACIÓN MINICABECERA MDF LADYSOFT | 04/09/2026", "sender": "fvega@sell-out.cl", "date": "2026-09-04T21:01:55Z", "threadId": "1a06e3a713d9a351" },
+    { "estado": "falta", "marca": null, "sub": "Implementación", "subject": "Reporte Diario Implementacion - IMPLEMENTACIÓN PAYLOADER PPA LADYSOFT | 04/09/2026", "sender": "fvega@sell-out.cl", "date": "2026-09-04T21:01:38Z", "threadId": "1a06e3a34a945a69" },
+    { "estado": "falta", "marca": null, "sub": "Degustación", "subject": "Re: Organización campañas fin de semana 4 al 6 de septiembre", "sender": "lvaliente@sell-out.cl", "date": "2026-09-04T20:25:07Z", "threadId": "1a06d24cbe0c3c04" },
+    { "estado": "falta", "marca": null, "sub": "Despacho", "subject": "Re: Consulta ppto KIT ALMACENES UL - UCCU31202605001", "sender": "cleon@sell-out.cl", "date": "2026-09-04T15:21:17Z", "threadId": "1a06d031c198d79a" },
+    { "estado": "pendiente", "marca": null, "sub": "Retiro", "subject": "RE: [External] - Retiro de elementos Pepsodent Expert - Pentacrom", "sender": "juan.guevara@pentacrom.cl", "date": "2026-09-04T15:07:32Z", "threadId": "1a06cd9afbe6efa2" },
+    { "estado": "pendiente", "marca": null, "sub": null, "subject": "KGM Musso Grand: potencia para tus grandes desafíos🔥", "sender": "info@contacto.guillermomorales.cl", "date": "2026-09-03T23:30:43Z", "threadId": "1a0699c44a262d62" },
+    { "estado": "pendiente", "marca": null, "sub": "Traslados", "subject": "Re: Factura", "sender": "bbaeza@sell-out.cl", "date": "2026-09-03T20:59:25Z", "threadId": "1a067ed9963f724d" },
+    { "estado": "pendiente", "marca": null, "sub": null, "subject": "Sell Out: Tu informe fue cerrado ✅", "sender": "info@rindegastos.com", "date": "2026-09-03T20:50:50Z", "threadId": "1a06909e213c5451" }
+  ]
+};
+/* DATA_END */
+
+function fmtDate(iso){
+  const d = new Date(iso);
+  return new Intl.DateTimeFormat('es-CL', { timeZone: 'America/Santiago', day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }).format(d);
+}
+
+document.getElementById('updated-time').innerHTML = '<span class="local-time">' + fmtDate(DATA.generatedAtUTC) + ' (Santiago)</span>';
+if (DATA.noticeText) {
+  document.getElementById('notice-text').innerHTML = DATA.noticeText;
+  document.getElementById('notice-callout').style.display = 'block';
+}
+
+// KPIs
+const totalMarca = DATA.brandBacklog.reduce((a,b)=>a+b.count,0);
+document.getElementById('kpi-total-marca').textContent = totalMarca;
+document.getElementById('kpi-procesados').textContent = DATA.procesadosLote;
+document.getElementById('kpi-pendiente').textContent = DATA.estados.pendiente;
+document.getElementById('kpi-falta-plan').textContent = DATA.estados.faltaPlanificacion;
+document.getElementById('kpi-respuesta-auto').textContent = DATA.estados.respuestaAutomatica;
+document.getElementById('kpi-en-plan').textContent = DATA.estados.enPlanificacion;
+
+// Status grid
+const statusDefs = [
+  {key:'pendiente', filterVal:'pendiente', label:'Pendiente', color:'var(--critical)', val:DATA.estados.pendiente},
+  {key:'respuestaAutomatica', filterVal:'respuesta', label:'Respuesta automática', color:'var(--warning)', val:DATA.estados.respuestaAutomatica},
+  {key:'faltaPlanificacion', filterVal:'falta', label:'Falta responder planificación', color:'war(--serious)', val:DATA.estados.faltaPlanificacion},
+  {key:'enPlanificacion', filterVal:'planificacion', label:'Ya en planificación', color:'var(--good)', val:DATA.estados.enPlanificacion}
+];
+document.getElementById('status-grid').innerHTML = statusDefs.map(s => `
+  <div class="status-tile" data-filter-type="estado" data-filter-value="${s.filterVal}">
+    <div class="head"><span class="icon" style="background:${s.color}"></span>${s.label}</div>
+    <div class="val">${s.val}</div>
+  </div>`).join('');
+
+// Brand bars (sequential single hue, sorted desc)
+const maxBrand = Math.max(...DATA.brandBacklog.map(b=>b.count), 1);
+const brandsSorted = [...DATA.brandBacklog].sort((a,b)=>b.count-a.count);
+document.getElementById('brand-bars').innerHTML = brandsSorted.map(b => `
+  <div class="bar-row" data-filter-type="marca" data-filter-value="${b.name}">
+    <div class="name">${b.name}</div>
+    <div class="bar-track"><div class="bar-fill" style="width:${(b.count/maxBrand*100).toFixed(1)}%; background:var(--series-1);"></div></div>
+    <div class="count">${b.count}</div>
+  </div>`).join('');
+
+// Subcategoria bars (categorical fixed order)
+const subColors = ['var(--series-1)','var(--series-2)','var(--series-3)','var(--series-4)','var(--series-5)'];
+const maxSub = Math.max(...DATA.subcategorias.map(s=>s.count), 1);
+document.getElementById('sub-legend').innerHTML = DATA.subcategorias.map((s,i) => `<span><span class="dot" style="background:${subColors[i]}"></span>${s.name}</span>`).join('');
+document.getElementById('sub-bars').innerHTML = DATA.subcategorias.map((s,i) => `
+  <div class="bar-row" data-filter-type="sub" data-filter-value="${s.name}">
+    <div class="name">${s.name}</div>
+    <div class="bar-track"><div class="bar-fill" style="width:${(s.count/maxSub*100).toFixed(1)}%; background:${subColors[i]};"></div></div>
+    <div class="count">${s.count}</div>
+  </div>`).join('');
+
+// Populate filter selects
+const marcaSet = [...new Set(DATA.brandBacklog.map(b=>b.name))];
+const subSet = [...new Set(DATA.subcategorias.map(s=>s.name))];
+const estadoOptions = [
+  {value:'pendiente', label:'Pendiente'},
+  {value:'respuesta', label:'Respuesta automática'},
+  {value:'falta', label:'Falta planificación'},
+  {value:'planificacion', label:'Ya en planificación'}
+];
+const fMarca = document.getElementById('f-marca');
+const fSub = document.getElementById('f-sub');
+const fEstado = document.getElementById('f-estado');
+marcaSet.forEach(m => fMarca.insertAdjacentHTML('beforeend', `<option value="${m}">${m}</option>`));
+subSet.forEach(s => fSub.insertAdjacentHTML('beforeend', `<option value="${s}">${s}</option>`));
+estadoOptions.forEach(e => fEstado.insertAdjacentHTML('beforeend', `<option value="${e.value}">${e.label}</option>`));
+
+// ---- Table: filter + sort ----
+let sortKey = 'date';
+let sortDir = -1; // desc by default (most recent first)
+
+function estadoLabel(v){
+  return { pendiente:'Pendiente', respuesta:'Respuesta automática', falta:'Falta planificación', planificacion:'Ya en planificación' }[v] || v;
+}
+function estadoPillClass(v) {
+  return { pendiente:'pendiente', respuesta:'respuesta', falta:'falta', planificacion:'planificacion' }[v] || '';
+}
+
+function currentFilters(){
+  return {
+    marca: fMarca.value,
+    sub: fSub.value,
+    estado: fEstado.value,
+    q: document.getElementById('f-search').value.trim().toLowerCase()
+  };
+}
+
+function applyFiltersAndRender(){
+  const f = currentFilters();
+  let rows = DATA.atencion.filter(item => {
+    if (f.marca && item.marca !== f.marca) return false;
+    if (f.sub && item.sub !== f.sub) return false;
+    if (f.estado && item.estado !== f.estado) return false;
+    if (f.q) {
+      const hay = (item.subject + ' ' + item.sender).toLowerCase();
+      if (!hay.includes(f.q)) return false;
+    }
+    return true;
+  });
+
+  rows.sort((a,b) => {
+    let av = a[sortKey], bv = b[sortKey];
+    if (sortKey === 'date') { av = new Date(av).getTime(); bv = new Date(bv).getTime(); }
+    else { av = (av||'').toString().toLowerCase(); bv = (bv||'').toString().toLowerCase(); }
+    if (av < bv) return -1 * sortDir;
+    if (av > bv) return 1 * sortDir;
+    return 0;
+  });
+
+  const tbody = document.querySelector('#attention-table tbody');
+  document.getElementById('f-count').textContent = rows.length + ' de ' + DATA.atencion.length + ' correos';
+
+  if (rows.length === 0) {
+    document.getElementById('attention-table').style.display = DATA.atencion.length === 0 ? 'none' : '';
+    document.getElementById('attention-empty').style.display = 'block';
+    tbody.innerHTML = '';
+    return;
+  }
+  document.getElementById('attention-table').style.display = '';
+  document.getElementById('attention-empty').style.display = 'none';
+
+  tbody.innerHTML = rows.map(item => `
+    <tr>
+      <td><span class="pill ${estadoPillClass(item.estado)}">${estadoLabel(item.estado)}</span></td>
+      <td>${item.marca || '—'}</td>
+      <td>${item.sub || '—'}</td>
+      <td class="subj">${item.subject}</td>
+      <td>${item.sender}</td>
+      <td class="local-time">${fmtDate(item.date)}</td>
+      <td><a href="https://mail.google.com/mail/u/0/#all/${item.threadId}" target="_blank" rel="noopener">Abrir ↋</a></td>
+    </tr>`).join('');
+}
+
+// Filter bar events
+['f-marca','f-sub','f-estado'].forEach(id => document.getElementById(id).addEventListener('change', () => { syncActiveStates(); applyFiltersAndRender(); }));
+document.getElementById('f-search').addEventListener('input', applyFiltersAndRender);
+document.getElementById('f-clear').addEventListener('click', () => {
+  fMarca.value = ''; fSub.value = ''; fEstado.value = ''; document.getElementById('f-search').value = '';
+  syncActiveStates(); applyFiltersAndRender();
+});
+
+// Sortable headers
+document.querySelectorAll('#attention-table th[data-key]').forEach(th => {
+  th.addEventListener('click', () => {
+    const key = th.getAttribute('data-key');
+    if (sortKey === key) { sortDir *= -1; } else { sortKey = key; sortDir = 1; }
+    document.querySelectorAll('#attention-table th').forEach(h => { h.classList.remove('sorted'); h.querySelector('.arrow') && (h.querySelector('.arrow').textContent = '▾'); });
+    th.classList.add('sorted');
+    th.querySelector('.arrow').textContent = sortDir === 1 ? '▴' : '▾';
+    applyFiltersAndRender();
+  });
+});
+
+// Clickable KPIs / status tiles / bars set the estado/marca/sub filter (toggle)
+function syncActiveStates(){
+  document.querySelectorAll('[data-filter-type]').forEach(el => {
+    const type = el.getAttribute('data-filter-type');
+    const val = el.getAttribute('data-filter-value');
+    let isActive = false;
+    if (type === 'estado') isActive = fEstado.value === val;
+    else if (type === 'marca') isActive = fMarca.value === val;
+    else if (type === 'sub') isActive = fSub.value === val;
+    el.classList.toggle('active', !!isActive && type !== 'none');
+  });
+}
+
+document.querySelectorAll('[data-filter-type="estado"]').forEach(el => {
+  el.addEventListener('click', () => {
+    const val = el.getAttribute('data-filter-value');
+    fEstado.value = (fEstado.value === val) ? '' : val;
+    syncActiveStates(); applyFiltersAndRender();
+    document.getElementById('attention-table').scrollIntoView({behavior:'smooth', block:"nearest"});
+  });
+});
+document.querySelectorAll('[data-filter-type="marca"]').forEach(el => {
+  el.addEventListener('click', () => {
+    const val = el.getAttribute('data-filter-value');
+    fMarca.value = (fMarca.value === val) ? '' : val;
+    syncActiveStates(); applyFiltersAndRender();
+    document.getElementById('attention-table').scrollIntoView({behavior:'smooth', block:"nearest"});
+  });
+});
+document.querySelectorAll('[data-filter-type="sub"]').forEach(el => {
+  el.addEventListener('click', () => {
+    const val = el.getAttribute('data-filter-value');
+    fSub.value = (fSub.value === val) ? '' : val;
+    syncActiveStates(); applyFiltersAndRender();
+    document.getElementById('attention-table').scrollIntoView({behavior:'smooth', block:"nearest"});
+  });
+});
+
+applyFiltersAndRender();
+
+// ---- Resumen general → modal popup con detalle por estado ----
+const modalBackdrop = document.getElementById('modal-backdrop');
+const modalTitle = document.getElementById('modal-title');
+const modalSubtitle = document.getElementById('modal-subtitle');
+
+function openResumenModal(){
+  const total = statusDefs.reduce((a,s)=>a+s.val,0);
+  modalTitle.textContent = 'Resumen de correos por estado';
+  modalSubtitle.textContent = 'Foto actual de todos los correos ya procesados por el asistente.';
+  document.getElementById('modal-body').innerHTML = statusDefs.map(s => `
+    <div class="modal-row">
+      <div class="label"><span class="dot" style="background:${s.color}"></span>${s.label}</div>
+      <div class="n">${s.val}</div>
+    </div>`).join('') + `
+    <div class="modal-row">
+      <div class="label" style="font-weight:600; color:var(--text-primary);">Total procesados</div>
+      <div class="n">${total}</div>
+    </div>`;
+  modalBackdrop.classList.add('open');
+}
+
+// ---- Actualizar ahora → instrucciones (el dashboard es HTML estático, no tiene backend propio) ----
+function openRefreshInfoModal(){
+  modalTitle.textContent = '↻ Actualizar ahora';
+  modalSubtitle.textContent = 'Este dashboard es un archivo estático: para forzar una revisión inmediata de Gmail, pídeselo directamente a Claude.';
+  document.getElementById('modal-body').innerHTML = `
+    <div style="font-size:13.5px; color:var(--text-secondary); line-height:1.6; padding:4px 0 6px;">
+      Escríbele a Claude, en cualquier conversación:
+      <div style="margin:10px 0; padding:10px 14px; background:var(--grid); border-radius:8px; font-weight:600; color:var(--text-primary);">
+        "Actualiza el dashboard de correos ahora"
+      </div>
+      Claude revisará Gmail, recalculará los totales y te enviará el archivo actualizado en 1–2 minutos. También puedes esperar a la próxima corrida automática (cada hora, L–V 09:00–19:00 Santiago) — no necesitas hacer nada para eso.
+    </div>`;
+  modalBackdrop.classList.add('open');
+}
+
+document.getElementById('resumen-title').addEventListener('click', openResumenModal);
+document.getElementById('btn-refresh').addEventListener('click', openRefreshInfoModal);
+document.getElementById('modal-close').addEventListener('click', () => modalBackdrop.classList.remove('open'));
+modalBackdrop.addEventListener('click', (e) => { if (e.target === modalBackdrop) modalBackdrop.classList.remove('open'); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') modalBackdrop.classList.remove('open'); });
+</script>
+</body>
+</html>
